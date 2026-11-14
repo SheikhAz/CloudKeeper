@@ -4,6 +4,7 @@ import Photo from './pages/Photo.jsx';
 import About from './pages/About.jsx';
 import Landing from './components/Landing.jsx';
 import Auth from './components/Auth.jsx';
+import AuthScene from './components/AuthScene.jsx';
 
 /* ---------------- mini router ---------------- */
 const RouterContext = createContext({ path: '/', navigate: () => {} });
@@ -201,16 +202,33 @@ function Pages() {
     </div>
   );
 }
+/* the auth scene lives here, so it is built once and never reloaded */
+function AuthBackdrop({ warm }) {
+  const { path } = useRouter();
+  const active = path === '/login' || path === '/signup';
+  const [mounted, setMounted] = useState(active);
 
+  useEffect(() => {
+    if (active || warm) setMounted(true);
+  }, [active, warm]);
+
+  if (!mounted) return null;
+  return (
+    <div className={`auth-bg ${active ? 'is-on' : ''}`} aria-hidden="true">
+      <AuthScene active={active} />
+    </div>
+  );
+}
 /* landing, or the auth pages, depending on the URL */
-function Gate({ onEnter }) {
+function Gate({ onEnter, onBegin }) {
   const { path, navigate } = useRouter();
   if (path === '/login' || path === '/signup') {
     const mode = path === '/login' ? 'login' : 'signup';
-    return <Auth key={mode} mode={mode} navigate={navigate} onEnter={onEnter} />;
+    return <Auth mode={mode} navigate={navigate} onEnter={onEnter} />;
   }
   return (
     <Landing
+      onBegin={onBegin}
       onLogin={() => navigate('/login')}
       onSignup={() => navigate('/signup')}
     />
@@ -236,10 +254,12 @@ function Shell({ entered }) {
 
 export default function App() {
   const [entered, setEntered] = useState(false);
+  const [warm, setWarm] = useState(false);
 
   return (
     <RouterProvider>
-      {!entered && <Gate onEnter={() => setEntered(true)} />}
+      {!entered && <AuthBackdrop warm={warm} />}
+      {!entered && <Gate onEnter={() => setEntered(true)} onBegin={() => setWarm(true)} />}
       <Shell entered={entered} />
     </RouterProvider>
   );

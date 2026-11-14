@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import AuthScene from './AuthScene.jsx';
 /* ==================== EDIT COPY HERE ==================== */
 const COPY = {
   login: {
@@ -77,7 +76,6 @@ export default function Auth({ mode = 'login', navigate, onEnter }) {
 
   return (
     <div className={`auth auth-${mode}`}>
-      <AuthScene />
       <div className="auth-shade" aria-hidden="true" />
 
       {/* inset frame with corner brackets */}
@@ -91,22 +89,25 @@ export default function Auth({ mode = 'login', navigate, onEnter }) {
       </button>
 
       {/* headline — top center, script over light sans */}
-      <header className="auth-head">
+      <header className="auth-head" key={`head-${mode}`}>
         <p className="auth-script">{c.script}</p>
         <p className="auth-sans">{c.sans}</p>
       </header>
 
       {/* bottom stack: text, fields, cream pill, switch link */}
-      <div className="auth-panel">
+      <div className="auth-panel" key={`panel-${mode}`}>
         <p className="auth-text">{c.text}</p>
 
         <form className="auth-form" onSubmit={submit} noValidate>
           {fields.map((key, i) => {
             const m = META[key];
+            const id = `auth-${mode}-${key}`;
             return (
-              <label className="auth-field" key={key}>
+              <label className="auth-field" key={key} htmlFor={id}>
                 <span className="sr-only">{m.label}</span>
                 <input
+                  id={id}
+                  name={key}
                   type={m.type}
                   value={form[key]}
                   onChange={set(key)}

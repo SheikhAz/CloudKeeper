@@ -32,7 +32,6 @@ function makeNameTexture(name) {
 
 function build(wrap, opts) {
   const isMobile = wrap.clientWidth <= MOBILE_MAX;
-  /* on phones, `mobile` overrides any of: gap, drift, radiusFactor, top, slope, mobileScale */
   const { items, gap, drift, radiusFactor, top, slope, mobileScale, shiftY = 0 } = {
     ...opts,
     ...(isMobile ? opts.mobile : null),
@@ -40,10 +39,10 @@ function build(wrap, opts) {
 
   const disposables = [];
   const meshes = [];
+  let dead = false; /* set on cleanup so late-arriving textures get disposed */
   const W = () => wrap.clientWidth;
   const H = () => wrap.clientHeight;
 
-  /* size multiplier: phones scale with screen width (bigger than before) */
   const s = isMobile
     ? clamp(W() / 380, 0.8, 1.1) * mobileScale
     : Math.min(1.1, Math.max(0.6, W() / 1440));
@@ -52,15 +51,14 @@ function build(wrap, opts) {
   const Cx = W() / 2;
   const Cy = H() * (top + shiftY) + R;
 
-  const sized = items.map((it) => {
+  const sized = items.map((it, i) => {
     let h = it.vh ? H() * it.vh : it.h * s;
     let w = it.ratio ? h * it.ratio : it.w * s;
-    /* never let a card be wider than the phone screen */
     if (isMobile) {
       const maxW = W() * 0.8;
       if (w > maxW) { const k = maxW / w; w *= k; h *= k; }
     }
-    return { ...it, w, h, dy: (it.y || 0) * s };
+    return { ...it, idx: i, w, h, dy: (it.y || 0) * s };
   });
   let totalW = 0;
   for (const it of sized) { it.cx = totalW + it.w / 2; totalW += it.w + gap * s; }
@@ -77,7 +75,32 @@ function build(wrap, opts) {
   const camera = new THREE.PerspectiveCamera(fov, W() / H(), 1, camZ * 4);
   camera.position.z = camZ;
 
+  /* ---- load each unique URL once, share the texture across repeated cards ---- */
   const loader = new THREE.TextureLoader();
+  const texCache = new Map(); /* src -> { tex, waiting } */
+  const loadShared = (src, cb) => {
+    let entry = texCache.get(src);
+    if (!entry) {
+      entry = { tex: null, waiting: [] };
+      texCache.set(src, entry);
+      loader.load(
+        src,
+        (tex) => {
+          if (dead) { tex.dispose(); return; }
+          tex.colorSpace = THREE.SRGBColorSpace;
+          entry.tex = tex;
+          disposables.push(tex); /* disposed once, not per card */
+          entry.waiting.forEach((fn) => fn(tex));
+          entry.waiting = [];
+        },
+        undefined,
+        (err) => console.error('Texture failed:', src, err)
+      );
+    }
+    if (entry.tex) cb(entry.tex);
+    else entry.waiting.push(cb);
+  };
+
   for (const it of sized) {
     const geo = new THREE.PlaneGeometry(it.w, it.h);
     const mat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 });
@@ -87,13 +110,11 @@ function build(wrap, opts) {
     meshes.push(mesh);
     disposables.push(geo, mat);
 
-    loader.load(it.src, (tex) => {
-      tex.colorSpace = THREE.SRGBColorSpace;
+    loadShared(it.src, (tex) => {
       mat.map = tex;
       mat.needsUpdate = true;
       mesh.userData.loaded = true;
-      disposables.push(tex);
-    }, undefined, (err) => console.error('Texture failed:', it.src, err));
+    });
 
     if (it.name) {
       const nameTex = makeNameTexture(it.name);
@@ -110,22 +131,52 @@ function build(wrap, opts) {
 
   let target = 0, current = 0, dragging = false, lastX = 0;
 
+  /* ---- tap detection (raycast against the photo planes) ---- */
+  const raycaster = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
+  let down = null;
+
+  const hitTest = (clientX, clientY) => {
+    const r = wrap.getBoundingClientRect();
+    ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+    raycaster.setFromCamera(ndc, camera);
+    const hits = raycaster.intersectObjects(meshes, false); /* nearest first */
+    const hit = hits.find((h) => h.object.material.opacity > 0.5);
+    return hit ? hit.object.userData.idx : -1;
+  };
+
   const onWheel = (e) => {
+    if (e.target.closest?.('.lb-backdrop')) return;
     e.preventDefault();
     target += Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
   };
   const onDown = (e) => {
-    if (e.target.closest?.('a')) return; /* tapping the dial / links shouldn't start a drag */
+    if (e.target.closest?.('a')) return;
+    if (e.target.closest?.('.lb-backdrop')) return; /* lightbox open: ignore */
     dragging = true;
     lastX = e.clientX;
+    down = e.target.closest?.('.strip-page')
+      ? { x: e.clientX, y: e.clientY, t: performance.now() }
+      : null;
     document.body.classList.add('is-dragging');
   };
   const onMove = (e) => {
     if (!dragging) return;
-    target -= (e.clientX - lastX) * (isMobile ? 2.2 : 1.6); /* touch feels better a bit faster */
+    target -= (e.clientX - lastX) * (isMobile ? 2.2 : 1.6);
     lastX = e.clientX;
   };
-  const onUp = () => { dragging = false; document.body.classList.remove('is-dragging'); };
+  const onUp = (e) => {
+    dragging = false;
+    document.body.classList.remove('is-dragging');
+    if (down && e?.type === 'pointerup') {
+      const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+      if (moved < 6 && performance.now() - down.t < 400) {
+        const idx = hitTest(e.clientX, e.clientY);
+        if (idx >= 0) opts.onItemClick?.(idx);
+      }
+    }
+    down = null;
+  };
 
   window.addEventListener('wheel', onWheel, { passive: false });
   window.addEventListener('pointerdown', onDown);
@@ -152,7 +203,6 @@ function build(wrap, opts) {
       const xs = Cx + R * Math.sin(th);
       const ys = Cy - R * Math.cos(th) - it.dy;
 
-      /* depth cue: cards grow toward the left edge, shrink toward the right */
       const u = clamp((xs - Cx) / (W() / 2), -1.3, 1.3);
       const sc = 1 - u * slope;
 
@@ -171,6 +221,7 @@ function build(wrap, opts) {
   tick();
 
   return () => {
+    dead = true;
     cancelAnimationFrame(raf);
     window.removeEventListener('wheel', onWheel);
     window.removeEventListener('pointerdown', onDown);
@@ -190,16 +241,22 @@ export default function WebGLStrip({
   drift = 0,
   radiusFactor = 1.8,
   top = 0.28,
-  slope = 0,            /* 0 = uniform; ~0.3 = big left, small right */
-  mobileScale = 1,      /* extra multiplier for phone card size (Home: try 1.15–1.3) */
-  mobile = null,        /* optional phone-only overrides, e.g. { gap: 40, radiusFactor: 3 } */
+  slope = 0,
+  mobileScale = 1,
+  mobile = null,
+  onItemClick = null,
 }) {
   const wrapRef = useRef(null);
+  const clickRef = useRef(onItemClick);
+  clickRef.current = onItemClick; /* latest callback without rebuilding the scene */
 
   useEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap) return;
-    const opts = { items, gap, drift, radiusFactor, top, slope, mobileScale, mobile };
+    const opts = {
+      items, gap, drift, radiusFactor, top, slope, mobileScale, mobile,
+      onItemClick: (i) => clickRef.current?.(i),
+    };
     let cleanup = build(wrap, opts);
     let lastW = wrap.clientWidth;
     let lastH = wrap.clientHeight;
@@ -210,7 +267,6 @@ export default function WebGLStrip({
       t = setTimeout(() => {
         const w = wrap.clientWidth;
         const h = wrap.clientHeight;
-        /* ignore the small height jitter from mobile address bars hiding/showing */
         if (w === lastW && Math.abs(h - lastH) < 80) return;
         lastW = w; lastH = h;
         cleanup();

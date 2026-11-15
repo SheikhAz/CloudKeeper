@@ -4,6 +4,8 @@ from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework.response import Response
 from . import cloud
 from .models import StorageAccount, Photo
+import logging
+log = logging.getLogger(__name__)
 
 MAX_BYTES = 10 * 1024 * 1024
 ALLOWED = {'image/jpeg', 'image/png', 'image/webp', 'image/gif'}
@@ -87,7 +89,15 @@ def upload_photo(request):
         public_id, url = cloud.upload(acc, f)
     except cloud.StorageError as e:
         return Response({'errors': f'Cloudinary says: {e}'}, status=502)
-    photo = Photo.objects.create(owner=request.user, public_id=public_id, url=url)
+    try:
+        photo = Photo.objects.create(owner=request.user, public_id=public_id, url=url)
+    except Exception:
+        log.exception('DB save failed after upload; removing %s from Cloudinary', public_id)
+        try:
+            cloud.delete(acc, public_id)          # don't leave an orphan behind
+        except cloud.StorageError:
+            log.warning('Could not clean up orphaned image %s', public_id)
+        return Response({'errors': 'Could not save the photo. Please try again.'}, status=500)
     return Response(_dto(photo), status=201)
 
 @api_view(['DELETE'])
@@ -95,11 +105,17 @@ def delete_photo(request, pk):
     p = request.user.photos.filter(pk=pk).first()
     if not p:
         return Response(status=404)
+    force = request.query_params.get('force') == '1'
     acc = _account(request.user)
     if acc:
         try:
             cloud.delete(acc, p.public_id)
         except cloud.StorageError as e:
-            return Response({'errors': f'Cloudinary says: {e}'}, status=502)
+            if not force:
+                return Response(
+                    {'errors': f'Cloudinary says: {e}', 'code': 'cloud_delete_failed'},
+                    status=502,
+                )
+            log.warning('Forced vault-only delete of photo %s: %s', p.pk, e)
     p.delete()
     return Response(status=204)

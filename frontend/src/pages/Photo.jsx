@@ -5,9 +5,11 @@ import Upload from './Upload.jsx';
 import { Sticker } from '../stickers/Sticker';
 import { cloud, folder, padlock } from '../stickers/icons';
 import {
-  readCached, fetchPhotos, preload, deletePhoto,
+  readCached, fetchPhotos, deletePhoto,
   getStorageStatus, disconnectStorage,
 } from '../lib/photos.js';
+import ConfirmDialog from '../components/ConfirmDialog.jsx';
+
 
 const Y = [30, -10, 40, 20, -20, 35, 0, 25, -15];
 const MOBILE = { shiftY: 0.09 };      /* module level so the strip isn't rebuilt */
@@ -22,6 +24,10 @@ const TABS = [
   { id: 'status', label: 'Connection' },
   { id: 'upload', label: 'Upload' },
 ];
+
+/* true when the server list matches what we already have, so we skip a re-render */
+const sameUrls = (a, b) =>
+  a.length === b.length && a.every((p, i) => p.url === b[i].url);
 
 function toItems(list) {
   if (!list.length) return [];
@@ -81,18 +87,27 @@ function StripView({ items, loaded, onAdd }) {
 function RemoveView({ photos, setPhotos }) {
   const [confirmId, setConfirmId] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [forceId, setForceId] = useState(null);   /* Cloudinary delete failed: offer "vault only" */
   const [error, setError] = useState('');
 
-  const remove = async (id) => {
+  const remove = async (id, force = false) => {
     setBusyId(id); setError('');
     try {
-      await deletePhoto(id);
+      await deletePhoto(id, { force });
       setPhotos((list) => list.filter((p) => p.id !== id));
       setConfirmId(null);
-    } catch (e) {
-      setError(e.message);
+      setForceId(null);
+    } catch (err) {
+      if (err.code === 'cloud_delete_failed') {
+        setConfirmId(null);
+        setForceId(id);                 /* opens the second dialog below */
+      } else {
+        setForceId(null);
+        setError(err.message);
+      }
+    } finally {
+      setBusyId(null);
     }
-    setBusyId(null);
   };
 
   return (
@@ -131,6 +146,17 @@ function RemoveView({ photos, setPhotos }) {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={forceId !== null}
+        danger
+        busy={busyId !== null && busyId === forceId}
+        title="Couldn't delete from Cloudinary"
+        message="Remove this photo from your vault only? The file will stay in your Cloudinary account."
+        confirmLabel={busyId !== null && busyId === forceId ? 'Removing…' : 'Remove from vault'}
+        onConfirm={() => remove(forceId, true)}
+        onCancel={() => setForceId(null)}
+      />
     </main>
   );
 }
@@ -141,6 +167,8 @@ function StatusView({ navigate }) {
   const [s, setS] = useState(null);
   const [error, setError] = useState('');
   const [checking, setChecking] = useState(true);
+  const [askDisconnect, setAskDisconnect] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   const check = async () => {
     setChecking(true); setError('');
@@ -151,8 +179,10 @@ function StatusView({ navigate }) {
   useEffect(() => { check(); }, []);
 
   const disconnect = async () => {
-    if (!window.confirm('Disconnect? Your images stay in Cloudinary, but you will need to enter your details again to upload.')) return;
-    await disconnectStorage();
+    setDisconnecting(true);
+    try { await disconnectStorage(); } catch {}
+    setDisconnecting(false);
+    setAskDisconnect(false);
     check();
   };
 
@@ -194,13 +224,23 @@ function StatusView({ navigate }) {
         {s?.connected ? (
           <>
             <button className="upload-btn ghost" style={BTN} onClick={check} disabled={checking}>Re-check</button>
-            <button className="upload-btn ghost" style={BTN} onClick={() => navigate('/connect')}>Change</button>
-            <button className="upload-btn solid" style={BTN} onClick={disconnect}>Disconnect</button>
+            <button className="upload-btn solid" style={BTN} onClick={() => setAskDisconnect(true)}>Disconnect</button>
           </>
         ) : (
           <button className="upload-btn solid" onClick={() => navigate('/connect')}>Connect</button>
         )}
       </div>
+
+      <ConfirmDialog
+        open={askDisconnect}
+        danger
+        busy={disconnecting}
+        title="Disconnect storage?"
+        message="Your photos stay safe in Cloudinary, but you will need to enter your details again to upload."
+        confirmLabel={disconnecting ? 'Disconnecting…' : 'Disconnect'}
+        onConfirm={disconnect}
+        onCancel={() => setAskDisconnect(false)}
+      />
     </Stage>
   );
 }
@@ -212,8 +252,10 @@ export default function Photo({ navigate }) {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    preload(photos);
-    fetchPhotos().then(setPhotos).catch(() => {}).finally(() => setLoaded(true));
+    fetchPhotos()   /* already warms the browser cache via preload() */
+      .then((fresh) => setPhotos((prev) => (sameUrls(prev, fresh) ? prev : fresh)))
+      .catch(() => {})
+      .finally(() => setLoaded(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError
 from rest_framework.decorators import api_view , permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 
 User = get_user_model()
 
@@ -25,9 +26,9 @@ def signup(request):
     if User.objects.filter(username = email).exists():
        return Response({'errors':"An account with this email already exists."},status=409)
     try:
-       validate_password(password)
+      validate_password(password)
     except ValidationError as e:
-       return Response({"error":''.join(e.message)},status=400)
+      return Response({'errors': ' '.join(e.messages)}, status=400)
     user = User.objects.create_user(username=email,email=email,password=password,first_name=name)
     return Response(_payload(user),status=201)
 
@@ -42,5 +43,10 @@ def login(request):
       return Response({'errors':'Incorrect email or password .'},status=401)
    return Response(_payload(user))
 
-   
-   
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def me(request):
+    u = request.user
+    full = (u.first_name or '').strip()
+    first = full.split()[0] if full else ''
+    return Response({'first_name': first, 'name': full, 'email': u.email})

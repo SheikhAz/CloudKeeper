@@ -17,44 +17,80 @@ export function readCached() {
 function writeCached(list) {
   try { localStorage.setItem(KEY, JSON.stringify(list)); } catch {}
 }
-/* call on login and logout so users never see each other's photos */
-export const clearCache = () => localStorage.removeItem(KEY);
 
-export async function checkSession() {
-  if (!getToken()) return false;
-  try {
-    const r = await fetch(`${API}/storage/`, { headers: authHeaders() });
-    return r.status !== 401;      /* a network error keeps the user signed in */
-  } catch {
-    return true;
-  }
+let photosInFlight = null;   /* { token, promise } for the request currently running */
+
+/* call on login and logout so users never see each other's photos */
+export const clearCache = () => {
+  photosInFlight = null;
+  localStorage.removeItem(KEY);
+};
+let sessionInFlight = null;
+export function checkSession() {
+  const token = getToken();
+  if (!token) return Promise.resolve(false);
+  if (sessionInFlight) return sessionInFlight;
+
+  sessionInFlight = fetch(`${API}/storage/`, { headers: authHeaders() })
+    .then((r) => r.status !== 401)     /* a network error keeps the user signed in */
+    .catch(() => true)
+    .finally(() => { sessionInFlight = null; });
+  return sessionInFlight;
 }
 
-/* warm the browser cache so WebGL textures load instantly */
+/* warm the browser cache so WebGL textures load instantly (once per URL) */
+const warmed = new Set();
 export function preload(list) {
   list.forEach((p) => {
+    if (!p?.url || warmed.has(p.url)) return;
+    warmed.add(p.url);
     const img = new Image();
     img.crossOrigin = 'anonymous';
+    img.onerror = () => warmed.delete(p.url); /* allow a retry if it failed */
     img.src = p.url;
   });
 }
-
+export async function getProfile() {
+  const r = await fetch(`${API}/me/`, { headers: authHeaders() });
+  if (!r.ok) throw new Error('Could not load profile.');
+  return r.json();
+}
 /* ---------- photos ---------- */
-export async function fetchPhotos() {
-  if (!getToken()) throw new Error('Not signed in.');
-  const r = await fetch(`${API}/photos/`, { headers: authHeaders() });
-  if (!r.ok) throw new Error('Could not load photos.');
-  const list = await r.json();
-  writeCached(list);
-  preload(list);
-  return list;
+export function fetchPhotos() {
+  const token = getToken();
+  if (!token) return Promise.reject(new Error('Not signed in.'));
+
+  /* reuse the request already running (StrictMode, Home + Photo asking together) */
+  if (photosInFlight && photosInFlight.token === token) return photosInFlight.promise;
+
+  const entry = { token, promise: null };
+  entry.promise = (async () => {
+    const r = await fetch(`${API}/photos/`, { headers: authHeaders() });
+    if (!r.ok) throw new Error('Could not load photos.');
+    const list = await r.json();
+    if (getToken() === token) {          /* skip if the user logged out meanwhile */
+      writeCached(list);
+      preload(list);
+    }
+    return list;
+  })().finally(() => {
+    if (photosInFlight === entry) photosInFlight = null;
+  });
+
+  photosInFlight = entry;
+  return entry.promise;
 }
 
-export async function deletePhoto(id) {
-  const r = await fetch(`${API}/photos/${id}/`, { method: 'DELETE', headers: authHeaders() });
+export async function deletePhoto(id, { force = false } = {}) {
+  const r = await fetch(`${API}/photos/${id}/${force ? '?force=1' : ''}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
   if (r.status !== 204 && r.status !== 404) {
     const body = await r.json().catch(() => ({}));
-    throw new Error(body.errors || 'Could not remove the photo.');
+    const err = new Error(body.errors || 'Could not remove the photo.');
+    err.code = body.code;
+    throw err;
   }
   writeCached(readCached().filter((p) => p.id !== id));   /* keep Home's cache in sync */
 }

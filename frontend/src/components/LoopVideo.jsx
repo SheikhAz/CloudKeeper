@@ -10,7 +10,6 @@ export default function LoopVideo({ onReady }) {
     const vids = [a.current, b.current];
     let active = 0;
     let fading = false;
-    let raf;
     let timer;
     const play = (v) => v.play().catch(() => {});
 
@@ -18,7 +17,8 @@ export default function LoopVideo({ onReady }) {
     const retry = () => { play(vids[active]); window.removeEventListener('pointerdown', retry); };
     window.addEventListener('pointerdown', retry);
 
-    const tick = () => {
+    /* 5 checks a second is plenty for a 1.4s fade, and keeps the main thread free */
+    const poll = setInterval(() => {
       const cur = vids[active];
       const nxt = vids[1 - active];
       const d = cur.duration;
@@ -28,21 +28,19 @@ export default function LoopVideo({ onReady }) {
         play(nxt);
         cur.style.zIndex = 1;
         nxt.style.zIndex = 2;
-        nxt.classList.add('is-on');           /* fades in on top */
+        nxt.classList.add('is-on');
         timer = setTimeout(() => {
-          cur.classList.remove('is-on');      /* hidden underneath, safe to reset */
+          cur.classList.remove('is-on');
           cur.pause();
           cur.currentTime = 0;
           active = 1 - active;
           fading = false;
         }, FADE * 1000 + 100);
       }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
+    }, 200);
 
     return () => {
-      cancelAnimationFrame(raf);
+      clearInterval(poll);
       clearTimeout(timer);
       window.removeEventListener('pointerdown', retry);
     };
@@ -55,8 +53,6 @@ export default function LoopVideo({ onReady }) {
     </>
   );
 
-  /* .landing-media is its own stacking layer, so the z-index values the
-     crossfade sets on the videos can never rise above the landing UI */
   return (
     <div className="landing-media" aria-hidden="true">
       <video
@@ -67,10 +63,11 @@ export default function LoopVideo({ onReady }) {
       >
         {sources}
       </video>
+      {/* second video only loads metadata until the first loop is nearly over */}
       <video
         ref={b}
         className="landing-video"
-        muted playsInline preload="auto" disablePictureInPicture aria-hidden="true"
+        muted playsInline preload="metadata" disablePictureInPicture aria-hidden="true"
       >
         {sources}
       </video>

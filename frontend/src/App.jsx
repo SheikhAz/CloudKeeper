@@ -7,23 +7,32 @@ import Connect from './pages/Connect.jsx';
 import Landing from './components/Landing.jsx';
 import Auth from './components/Auth.jsx';
 import AuthScene from './components/AuthScene.jsx';
-import { clearCache, checkSession } from './lib/photos.js';
+import { clearCache, checkSession, getProfile } from './lib/photos.js';
 
 /* ---------------- mini router ---------------- */
 const RouterContext = createContext({ path: '/', navigate: () => {} });
 
+/* old /photo links and bookmarks are treated as /vault */
+const normalize = (p) => (p === '/photo' ? '/vault' : p);
+
 function RouterProvider({ children }) {
-  const [path, setPath] = useState(window.location.pathname);
+  const [path, setPath] = useState(() => {
+    const raw = window.location.pathname;
+    const clean = normalize(raw);
+    if (clean !== raw) window.history.replaceState({}, '', clean);
+    return clean;
+  });
 
   useEffect(() => {
-    const onPop = () => setPath(window.location.pathname);
+    const onPop = () => setPath(normalize(window.location.pathname));
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
   const navigate = useCallback((to) => {
-    window.history.pushState({}, '', to);
-    setPath(to);
+    const next = normalize(to);
+    window.history.pushState({}, '', next);
+    setPath(next);
     window.scrollTo(0, 0);
   }, []);
 
@@ -54,16 +63,27 @@ function Link({ to, children, className, style, ...rest }) {
 }
 
 /* ---------------- fixed chrome ---------------- */
-function Chrome({ onLogout }) {
+function Chrome({ onLogout, entered }) {
+  const [firstName, setFirstName] = useState('');
+
+  useEffect(() => {
+    if (!entered) { setFirstName(''); return; }
+    let alive = true;
+    getProfile()
+      .then((p) => { if (alive) setFirstName(p.first_name || ''); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [entered]);
+
   return (
     <div className="chrome">
       <p className="chrome-tag" aria-hidden="true">
-        <span>
-          It&rsquo;s{' '}
-          <a href="https://www.instagram.com/sheikhazmatulla03/" target="_blank" rel="noreferrer" className="azzy">
-            Azz&rsquo;y
-          </a>
-        </span>
+        {firstName && (
+          <>
+            <span>It&rsquo;s</span>
+            <span className="azzy">{firstName}</span>
+          </>
+        )}
       </p>
 
       <Link to="/" className="logo" aria-label="Cloud Keeper — home">
@@ -95,7 +115,7 @@ const SLOTS = [38, 90, 142];
 
 const ITEMS = [
   { id: 'home',  label: 'Home',  to: '/' },
-  { id: 'photo', label: 'Vault', to: '/photo' },
+  { id: 'photo', label: 'Vault', to: '/vault' },
   { id: 'about', label: 'About', to: '/about' },
 ];
 const N = ITEMS.length;
@@ -105,7 +125,10 @@ const place = (t) => ({ x: DIAL_A * Math.cos(rad(t)), y: DIAL_B * Math.sin(rad(t
 const slotOf = (i, active) => SLOTS[(i - active + N) % N];
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
-const pageFromPath = (path) => (path === '/photo' ? 'photo' : path === '/about' ? 'about' : 'home');
+const pageFromPath = (path) =>
+  path === '/vault' || path === '/photo' ? 'photo'
+  : path === '/about' ? 'about'
+  : 'home';
 
 function DialNav() {
   const { path } = useRouter();
@@ -247,11 +270,12 @@ function Gate({ onEnter, onBegin }) {
 
 function Shell({ entered, onLogout }) {
   const { path, navigate } = useRouter();
+  const onAuthPath = path === '/login' || path === '/signup';
 
   /* already inside the app but the URL says /login — send home */
   useEffect(() => {
-    if (entered && (path === '/login' || path === '/signup')) navigate('/');
-  }, [entered, path, navigate]);
+    if (entered && onAuthPath) navigate('/');
+  }, [entered, onAuthPath, navigate]);
 
   const handleLogout = () => {
     onLogout();
@@ -260,8 +284,8 @@ function Shell({ entered, onLogout }) {
 
   return (
     <div className={`site-shell ${entered ? 'is-in' : ''}`} aria-hidden={!entered}>
-      <Chrome onLogout={handleLogout} />
-      {entered && <Pages />}
+      <Chrome onLogout={handleLogout} entered={entered} />
+      {entered && !onAuthPath && <Pages />}
       <DialNav />
     </div>
   );

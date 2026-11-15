@@ -8,4 +8,5 @@ urlpatterns = [
     path('photos/', photo_views.list_photos),
     path('photos/upload/', photo_views.upload_photo),
     path('photos/<int:pk>/', photo_views.delete_photo),
+    path('me/', views.me),
 ]

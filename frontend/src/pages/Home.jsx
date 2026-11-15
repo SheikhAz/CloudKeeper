@@ -1,14 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import WebGLStrip from '../components/WebGLStrip.jsx';
-import { Sticker } from '../stickers/Sticker';
-import { brand } from '../stickers/fun';
+import Stage, { useWide } from '../components/Stage.jsx';
+import Lightbox from '../components/Lightbox.jsx';
 import { camera } from '../stickers/icons';
 import { readCached, fetchPhotos, preload } from '../lib/photos.js';
 
-const Y = [30, -10, 40, 20, -20, 35, 0, 25, -15];   /* keeps the wavy look */
-const MOBILE = { shiftY: 0.09 };                    /* defined once, outside the component */
-const MIN_CARDS = 6;                                /* the strip is a circle, so few photos look sparse */
-const PALETTE = brand('#fa0202', '#141212');        /* site red + ink, defined once so it never repaints */
+const Y = [30, -10, 40, 20, -20, 35, 0, 25, -15];
+const MOBILE = { shiftY: 0.09 };
+const MIN_CARDS = 6;
 
 function toItems(list) {
   if (!list.length) return [];
@@ -20,50 +19,60 @@ function toItems(list) {
 }
 
 export default function Home({ navigate }) {
-  const [photos, setPhotos] = useState(() => readCached());   /* instant, from cache */
+  const wide = useWide();
+  const [photos, setPhotos] = useState(() => readCached());
   const [loaded, setLoaded] = useState(false);
-
+  const [openIndex, setOpenIndex] = useState(null);
+  const sameUrls = (a, b) =>
+  a.length === b.length && a.every((p, i) => p.url === b[i].url);
   useEffect(() => {
-    preload(photos);
     fetchPhotos()
-      .then(setPhotos)
+      .then((fresh) => setPhotos((prev) => (sameUrls(prev, fresh) ? prev : fresh)))
       .catch(() => {})
       .finally(() => setLoaded(true));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* memoised: WebGLStrip rebuilds when `items` changes identity */
   const items = useMemo(() => toItems(photos), [photos]);
+
+  /* the strip repeats photos to fill the circle, so map back to the real list */
+  const handleItemClick = useCallback((itemIndex) => {
+    if (!photos.length) return;
+    setOpenIndex(itemIndex % photos.length);
+  }, [photos.length]);
+
+  const closeLightbox = useCallback(() => setOpenIndex(null), []);
 
   return (
     <main className="strip-page">
       {items.length > 0 && (
         <WebGLStrip items={items} gap={170} drift={0.65} radiusFactor={2.2}
-                    top={0.40} slope={0.4} mobile={MOBILE} />
+                    top={0.40} slope={0.4} mobile={MOBILE}
+                    onItemClick={handleItemClick} />
       )}
       {items.length === 0 && loaded && (
-        <section
-          aria-live="polite"
-          style={{
+        <Stage
+          tag="section"
+          icon={camera}
+          label="Animated camera"
+          mobileStyle={{
             position: 'absolute', inset: 0, zIndex: 2,
             display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center',
             textAlign: 'center', cursor: 'default',
             padding: '110px 24px 150px',
           }}
+          mobileInnerStyle={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+          mobileArtStyle={{ width: 'min(60vw, 260px)', marginBottom: 18 }}
         >
-          <Sticker icon={camera} palette={PALETTE} enter={0.15} replayOnHover
-                  label="Animated camera"
-                  style={{ width: 'min(60vw, 260px)', marginBottom: 18 }} />
           <h1 style={{
             fontFamily: 'var(--font-serif)', fontWeight: 400,
-            fontSize: 'clamp(32px, 8vw, 48px)', lineHeight: 1.05,
+            fontSize: 'clamp(32px, 8vw, 52px)', lineHeight: 1.05,
             marginBottom: 12,
           }}>
             Your strip is <em style={{ fontStyle: 'normal', color: '#fa0202' }}>empty</em>
           </h1>
           <p style={{
-            maxWidth: 280, fontSize: 13, lineHeight: 1.65,
+            maxWidth: wide ? 380 : 280, fontSize: 13, lineHeight: 1.65,
             color: 'rgba(20,18,18,.55)', marginBottom: 22,
           }}>
             Upload a photo and it will start drifting around your vault.
@@ -72,7 +81,16 @@ export default function Home({ navigate }) {
                   onClick={() => navigate('/upload')}>
             Add your first photo
           </button>
-        </section>
+        </Stage>
+      )}
+
+      {openIndex !== null && photos[openIndex] && (
+        <Lightbox
+          photos={photos}
+          index={openIndex}
+          onChange={setOpenIndex}
+          onClose={closeLightbox}
+        />
       )}
     </main>
   );

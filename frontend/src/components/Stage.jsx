@@ -30,6 +30,7 @@ export default function Stage({
   tag: Tag = 'main',
   mobileClass, mobileStyle, mobileInnerClass, mobileInnerStyle,
   mobileArt = true, mobileArtStyle,
+  aside, artWidth = 'min(32vw, 380px, 44vh)',   /* desktop only: extra content under the sticker, and its size */
 }) {
   const wide = useWide();
 
@@ -44,9 +45,10 @@ export default function Stage({
           textAlign: 'left', cursor: 'default',
         }}
       >
-        <div style={{ flex: '0 1 auto' }}>
+        <div style={{ flex: '0 1 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
           <Sticker icon={icon} palette={PALETTE} enter={0.15} replayOnHover label={label}
-                   style={{ width: 'min(32vw, 380px, 44vh)' }} />
+                   style={{ width: artWidth }} />
+          {aside}
         </div>
         <div style={{ flex: '0 1 440px', minWidth: 0 }}>{children}</div>
       </Tag>

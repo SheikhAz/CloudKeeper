@@ -5,7 +5,7 @@
   const EYEBROW = 'Cloud Keeper · Personal storage';
   const TITLE = [
     { text: 'Your documents.' },
-    { text: 'Your Cloudflare.,' },
+    { text: 'Your Cloudinary.,' },
     { text: 'Absolute privacy.', accent: true },
   ];
   const TEXT =

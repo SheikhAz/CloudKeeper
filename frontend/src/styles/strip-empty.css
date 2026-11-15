@@ -1,0 +1,90 @@
+/* ============ STRIP: EMPTY STATE ============ */
+/* .strip-empty had no rule, so it fell into the top-left of .strip-page under the fixed logo.
+   It is now its own centred layer that clears the logo (top) and the dial (bottom). */
+.strip-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 110px 24px calc(150px + env(safe-area-inset-bottom, 0px));
+  text-align: center;
+  cursor: default;                 /* .strip-page sets grab; nothing to drag here */
+  animation: pageIn .6s ease both;
+}
+.strip-empty-art { width: min(64vw, 300px); margin-bottom: 4px; }
+.strip-empty-title {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(32px, 8vw, 52px);
+  line-height: 1.05;
+  letter-spacing: -.01em;
+}
+.strip-empty-title em { font-style: normal; color: #fa0202; }
+.strip-empty-text {
+  max-width: 300px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: rgba(20, 18, 18, .55);
+}
+.strip-empty .upload-btn { min-width: 190px; white-space: nowrap; }
+.strip-empty .upload-btn.solid:hover { background: #fa0202; border-color: #fa0202; }
+
+@media (max-height: 640px) {       /* landscape phones: drop the copy, keep art + button */
+  .strip-empty-text { display: none; }
+  .strip-empty-art { width: min(30vh, 180px); }
+}
+/* ============ STRIP: EMPTY STATE ============ */
+.strip-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 110px 24px calc(150px + env(safe-area-inset-bottom, 0px));
+  text-align: center;
+  cursor: default;
+}
+.strip-empty-art { width: min(64vw, 300px); margin-bottom: 4px; }
+.strip-empty-title {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(32px, 8vw, 52px);
+  line-height: 1.05;
+  letter-spacing: -.01em;
+}
+.strip-empty-title em { font-style: normal; color: #fa0202; }
+.strip-empty-text {
+  max-width: 300px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: rgba(20, 18, 18, .55);
+}
+.strip-empty .upload-btn { min-width: 190px; white-space: nowrap; }
+
+/* ============ STRIP: EMPTY STATE ============ */
+.strip-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 150px 24px calc(150px + env(safe-area-inset-bottom, 0px));
+  text-align: center;
+  cursor: default;
+}
+
+/* desktop: the dial is bigger, so keep the content clear of it */
+@media (min-width: 701px) {
+  .strip-empty { padding-bottom: clamp(190px, 27vh, 260px); }
+}

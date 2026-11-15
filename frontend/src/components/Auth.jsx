@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react';
+import { clearCache } from '../lib/photos.js';
+
+const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+
 /* ==================== EDIT COPY HERE ==================== */
 const COPY = {
   login: {
@@ -59,18 +63,25 @@ export default function Auth({ mode = 'login', navigate, onEnter }) {
     setError('');
     setBusy(true);
     try {
-      /* TODO: real auth — point this at your Cloudflare Worker endpoint, e.g.
-         await fetch(`https://your-worker.workers.dev/${mode}`, {
-           method: 'POST',
-           headers: { 'Content-Type': 'application/json' },
-           body: JSON.stringify(form),
-         });
-      */
-      await new Promise((r) => setTimeout(r, 650));
+      const res = await fetch(`${API}/api/${mode}/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.errors || data.error || 'Something went wrong. Please try again.');
+      }
+      localStorage.setItem('token', data.token);
+      clearCache();               /* never show the previous user's photos */
       onEnter();
-    } catch {
+    } catch (err) {
       setBusy(false);
-      setError('Something went wrong. Please try again.');
+      setError(
+        err instanceof TypeError
+          ? 'Cannot reach the server. Please try again.'
+          : err.message
+      );
     }
   };
 

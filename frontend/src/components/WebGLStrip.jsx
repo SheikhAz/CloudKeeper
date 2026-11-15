@@ -93,7 +93,7 @@ function build(wrap, opts) {
       mat.needsUpdate = true;
       mesh.userData.loaded = true;
       disposables.push(tex);
-    });
+    }, undefined, (err) => console.error('Texture failed:', it.src, err));
 
     if (it.name) {
       const nameTex = makeNameTexture(it.name);

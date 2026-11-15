@@ -2,9 +2,12 @@ import { createContext, useContext, useEffect, useState, useCallback, useRef } f
 import Home from './pages/Home.jsx';
 import Photo from './pages/Photo.jsx';
 import About from './pages/About.jsx';
+import Upload from './pages/Upload.jsx';
+import Connect from './pages/Connect.jsx';
 import Landing from './components/Landing.jsx';
 import Auth from './components/Auth.jsx';
 import AuthScene from './components/AuthScene.jsx';
+import { clearCache, checkSession } from './lib/photos.js';
 
 /* ---------------- mini router ---------------- */
 const RouterContext = createContext({ path: '/', navigate: () => {} });
@@ -51,7 +54,7 @@ function Link({ to, children, className, style, ...rest }) {
 }
 
 /* ---------------- fixed chrome ---------------- */
-function Chrome() {
+function Chrome({ onLogout }) {
   return (
     <div className="chrome">
       <p className="chrome-tag" aria-hidden="true">
@@ -71,6 +74,7 @@ function Chrome() {
       <ul className="chrome-social">
         <li><a href="mailto:shiekhazmatulla@gmail.com">Email</a></li>
         <li><a href="https://www.instagram.com/sheikhazmatulla03/" target="_blank" rel="noreferrer">Instagram</a></li>
+        <li><button type="button" onClick={onLogout}>Logout</button></li>
       </ul>
 
       <p className="chrome-copy">© All rights reserved. 2026</p>
@@ -90,9 +94,9 @@ const DIAL_B = 155;
 const SLOTS = [38, 90, 142];
 
 const ITEMS = [
-  { id: 'home',  label: 'Home',     to: '/' },
-  { id: 'photo', label: 'Document', to: '/photo' },
-  { id: 'about', label: 'About',    to: '/about' },
+  { id: 'home',  label: 'Home',  to: '/' },
+  { id: 'photo', label: 'Vault', to: '/photo' },
+  { id: 'about', label: 'About', to: '/about' },
 ];
 const N = ITEMS.length;
 
@@ -194,14 +198,19 @@ function DialNav() {
 
 /* ---------------- app ---------------- */
 function Pages() {
-  const { path } = useRouter();
+  const { path, navigate } = useRouter();
   const page = pageFromPath(path);
   return (
-    <div className="page-fade" key={page}>
-      {page === 'photo' ? <Photo /> : page === 'about' ? <About /> : <Home />}
+    <div className="page-fade" key={path}>
+      {path === '/upload' ? <Upload navigate={navigate} />
+        : path === '/connect' ? <Connect navigate={navigate} />
+        : page === 'photo' ? <Photo navigate={navigate} />
+        : page === 'about' ? <About />
+        : <Home navigate={navigate} />}
     </div>
   );
 }
+
 /* the auth scene lives here, so it is built once and never reloaded */
 function AuthBackdrop({ warm }) {
   const { path } = useRouter();
@@ -219,6 +228,7 @@ function AuthBackdrop({ warm }) {
     </div>
   );
 }
+
 /* landing, or the auth pages, depending on the URL */
 function Gate({ onEnter, onBegin }) {
   const { path, navigate } = useRouter();
@@ -235,7 +245,7 @@ function Gate({ onEnter, onBegin }) {
   );
 }
 
-function Shell({ entered }) {
+function Shell({ entered, onLogout }) {
   const { path, navigate } = useRouter();
 
   /* already inside the app but the URL says /login — send home */
@@ -243,24 +253,45 @@ function Shell({ entered }) {
     if (entered && (path === '/login' || path === '/signup')) navigate('/');
   }, [entered, path, navigate]);
 
+  const handleLogout = () => {
+    onLogout();
+    navigate('/');
+  };
+
   return (
     <div className={`site-shell ${entered ? 'is-in' : ''}`} aria-hidden={!entered}>
-      <Chrome />
-      <Pages />
+      <Chrome onLogout={handleLogout} />
+      {entered && <Pages />}
       <DialNav />
     </div>
   );
 }
 
 export default function App() {
-  const [entered, setEntered] = useState(false);
+  /* start logged in if a token is already saved */
+  const [entered, setEntered] = useState(() => !!localStorage.getItem('token'));
   const [warm, setWarm] = useState(false);
+  const [session, setSession] = useState(0);
+
+  const logout = useCallback(() => {
+    localStorage.removeItem('token');
+    clearCache();
+    setSession((n) => n + 1);   /* remounts the Shell so the old user's photos leave memory */
+    setEntered(false);
+  }, []);
+
+  /* if the saved token was deleted or expired on the server, sign out */
+  useEffect(() => {
+    if (!entered) return;
+    checkSession().then((ok) => { if (!ok) logout(); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <RouterProvider>
       {!entered && <AuthBackdrop warm={warm} />}
       {!entered && <Gate onEnter={() => setEntered(true)} onBegin={() => setWarm(true)} />}
-      <Shell entered={entered} />
+      <Shell key={session} entered={entered} onLogout={logout} />
     </RouterProvider>
   );
 }

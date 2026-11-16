@@ -8,6 +8,8 @@ import Landing from './components/Landing.jsx';
 import Auth from './components/Auth.jsx';
 import AuthScene from './components/AuthScene.jsx';
 import { clearCache, checkSession, getProfile } from './lib/photos.js';
+import { Analytics, track } from '@vercel/analytics/react';
+
 
 /* ---------------- mini router ---------------- */
 const RouterContext = createContext({ path: '/', navigate: () => {} });
@@ -28,7 +30,9 @@ function RouterProvider({ children }) {
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
-
+  useEffect(() => {
+    track('pageview', { path });
+  }, [path]);
   const navigate = useCallback((to) => {
     const next = normalize(to);
     window.history.pushState({}, '', next);
@@ -312,10 +316,13 @@ export default function App() {
   }, []);
 
   return (
+  <>
     <RouterProvider>
       {!entered && <AuthBackdrop warm={warm} />}
       {!entered && <Gate onEnter={() => setEntered(true)} onBegin={() => setWarm(true)} />}
       <Shell key={session} entered={entered} onLogout={logout} />
     </RouterProvider>
+    <Analytics />
+  </>
   );
 }

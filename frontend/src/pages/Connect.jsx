@@ -5,7 +5,7 @@ import { getStorage, connectStorage, disconnectStorage } from '../lib/photos.js'
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 
 const CLOUDINARY_SIGNUP_URL = 'https://cloudinary.com/users/register_free';
-const CLOUDINARY_KEYS_URL = 'https://console.cloudinary.com/settings/api-keys';
+const CLOUDINARY_KEYS_URL = 'https://console.cloudinary.com/app/settings/api-keys';
 
 /* cloudinary://API_KEY:API_SECRET@CLOUD_NAME (optionally prefixed with CLOUDINARY_URL=) */
 const parseCloudinaryUrl = (v) => {

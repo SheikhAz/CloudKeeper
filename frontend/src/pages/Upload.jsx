@@ -123,7 +123,7 @@ export default function Upload({ navigate, embedded = false, onDone, onCancel })
               <div style={{ textAlign: 'center' }}>
                 <Sticker icon={cloud} palette={PALETTE} enter={0.1} replayOnHover
                          label="Animated upload cloud"
-                         style={{ width: 'min(44vw, 190px)', margin: '-26px auto -12px' }} />
+                         style={{ width: 'min(36vw, 140px)', margin: '-20px auto -8px' }} />
                 <span>Drag &amp; drop an image<br /><em>or click to browse</em></span>
               </div>
             )}

@@ -963,3 +963,17 @@ body { overscroll-behavior: none; }
     line-height: 1.5;
   }
 }
+/* ============ UPLOAD (inside Vault): keep clear of the tabs and the bottom menu ============ */
+@media (max-width: 600px) {
+  .upload-page.is-embedded {
+    padding: 128px 20px calc(160px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* drop zone fills only the space that is left, never more */
+  .upload-drop {
+    aspect-ratio: auto;
+    max-height: none;
+    height: clamp(150px, calc(100vh - 440px), 320px);    /* fallback */
+    height: clamp(150px, calc(100dvh - 440px), 320px);   /* real mobile browsers */
+  }
+}

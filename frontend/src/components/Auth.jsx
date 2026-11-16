@@ -110,12 +110,13 @@ export default function Auth({ mode = 'login', navigate, onEnter }) {
         <p className="auth-text">{c.text}</p>
 
         <form className="auth-form" onSubmit={submit} noValidate>
-          {fields.map((key, i) => {
+          {fields.map((key) => {
             const m = META[key];
             const id = `auth-${mode}-${key}`;
             return (
               <label className="auth-field" key={key} htmlFor={id}>
                 <span className="sr-only">{m.label}</span>
+                {/* no autoFocus: the keyboard only opens when the user taps a field */}
                 <input
                   id={id}
                   name={key}
@@ -124,7 +125,6 @@ export default function Auth({ mode = 'login', navigate, onEnter }) {
                   onChange={set(key)}
                   placeholder={m.placeholder}
                   autoComplete={key === 'password' ? (mode === 'signup' ? 'new-password' : 'current-password') : key}
-                  autoFocus={i === 0}
                   required
                 />
               </label>
